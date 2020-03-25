@@ -42,7 +42,7 @@ async fn stream_it(eventloop: &mut MqttEventLoop) {
 
 async fn requests(mut requests_tx: Sender<Request>) {
     for i in 0..15 {
-        requests_tx.send(publish_request(i)).await.unwrap();
+        requests_tx.send(publish_request(i)).await.expect("problem sending");
         time::delay_for(Duration::from_secs(1)).await; 
     }
 
@@ -51,9 +51,9 @@ async fn requests(mut requests_tx: Sender<Request>) {
 
 fn gcloud() -> MqttOptions {
     let mut mqttoptions = MqttOptions::new(&id(), "mqtt.googleapis.com", 8883);
-    mqttoptions.set_keep_alive(5);
+    mqttoptions.set_keep_alive(9);
     let password = gen_iotcore_password();
-    let ca = fs::read("certs/bike-1/roots.pem").unwrap();
+    let ca = fs::read("certs/roots.pem").expect("couldn't find the roots.pem");
 
     mqttoptions
         .set_ca(ca)
@@ -63,7 +63,7 @@ fn gcloud() -> MqttOptions {
 }
 
 fn publish_request(i: u8) -> Request {
-    let topic = "/devices/".to_owned() +  "bike-1/events/imu";
+    let topic = "/devices/".to_owned() +  "arr_blah/events";
     let payload = vec![1, 2, 3, i];
 
     let publish = rumq_client::publish(&topic, QoS::AtLeastOnce, payload);
@@ -71,17 +71,17 @@ fn publish_request(i: u8) -> Request {
 }
 
 fn id() -> String {
-    let project = env::var("PROJECT").unwrap();
-    let registry = env::var("REGISTRY").unwrap();
+    let project = env::var("PROJECT").expect("no project env set");
+    let registry = env::var("REGISTRY").expect("no registry env set");
 
-    "projects/".to_owned() + &project + "/locations/asia-east1/registries/" + &registry + "/devices/" + "bike-1"
+    "projects/".to_owned() + &project + "/locations/us-central1/registries/" + &registry + "/devices/" + "arr_blah"
 }
 
 fn gen_iotcore_password() -> String {
-    let key = fs::read("certs/bike-1/rsa_private.pem").unwrap();
-    let key = EncodingKey::from_rsa_pem(&key).unwrap();
+    let key = fs::read("certs/private_key").expect("couldn't find the private_key");
+    let key = EncodingKey::from_rsa_pem(&key).expect("problem converting key from pem");
 
-    let project = env::var("PROJECT").unwrap();
+    let project = env::var("PROJECT").expect("again, no project env set");
     #[derive(Debug, Serialize, Deserialize)]
     struct Claims {
         iat: u64,
@@ -90,9 +90,9 @@ fn gen_iotcore_password() -> String {
     }
 
     let jwt_header = Header::new(Algorithm::RS256);
-    let iat = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let exp = SystemTime::now().add(Duration::from_secs(300)).duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let iat = SystemTime::now().duration_since(UNIX_EPOCH).expect("time is broken").as_secs();
+    let exp = SystemTime::now().add(Duration::from_secs(300)).duration_since(UNIX_EPOCH).expect("time is still broken").as_secs();
 
     let claims = Claims { iat, exp, aud: project };
-    encode(&jwt_header, &claims, &key).unwrap()
+    encode(&jwt_header, &claims, &key).expect("failed to encode the jwt")
 }
